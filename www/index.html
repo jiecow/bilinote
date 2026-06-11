@@ -186,13 +186,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC'
             <div class="card">
                 <div class="card-hd">
                     📝 视频转录字幕
-                    <span id="sourceTag" style="margin-left:auto"></span>
+                    <span style="display:flex;align-items:center;gap:8px;margin-left:auto">
+                        <input type="file" id="srtFile" accept=".srt,.vtt" style="display:none" onchange="loadSrtFile(this)">
+                        <button class="btn btn-outline btn-sm" onclick="$('srtFile').click()" title="上传 SRT 字幕文件">📄 上传SRT</button>
+                        <span id="sourceTag"></span>
+                    </span>
                 </div>
                 <div class="card-bd" style="padding:0">
                     <div class="transcript-box" id="transcriptBox" contenteditable="true"></div>
                 </div>
                 <div class="card-bd" style="padding-top:8px;text-align:right">
-                    <small style="color:var(--muted)">转录文本可编辑 · 编辑后点「重新生成」</small>
+                    <small style="color:var(--muted)">转录文本可编辑 · 可上传 SRT 字幕文件 · 编辑后点「重新生成」</small>
                 </div>
             </div>
         </div>
@@ -365,6 +369,39 @@ $('videoFile').onchange = function() {
 $('videoUrl').oninput = function() {
     if (this.value.trim()) $('videoFile').value = '';
 };
+// ====================== SRT 文件上传解析 ======================
+function parseSrt(raw) {
+    const text = []; const ts = []; let ct = '';
+    for (let line of raw.split(/\r?\n/)) {
+        line = line.trim();
+        if (!line) continue;
+        if (/^\d+$/.test(line)) continue;
+        const m = line.match(/^(\d{2}:\d{2}:\d{2}[,\.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,\.]\d{3})$/);
+        if (m) { ct = m[1]; continue; }
+        const cl = line.replace(/<[^>]+>/g, '');
+        if (ct) ts.push('[' + ct + '] ' + cl);
+        text.push(cl);
+    }
+    return { text: text.join('\n'), timestamped: ts.join('\n') };
+}
+function loadSrtFile(input) {
+    const f = input.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = function() {
+        let raw = reader.result;
+        // VTT → SRT 简单转换
+        if (f.name.endsWith('.vtt')) raw = raw.replace(/^WEBVTT.*\n/, '').replace(/^NOTE.*\n/gm, '').replace(/^(\d{2}:\d{2}:\d{2})\.(\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2})\.(\d{3})/gm, '$1,$2 --> $3,$4');
+        const parsed = parseSrt(raw);
+        curTranscript = parsed.text;
+        curTimestamped = parsed.timestamped;
+        $('transcriptBox').textContent = parsed.timestamped || parsed.text;
+        $('sourceTag').innerHTML = '<span class="tag-sub green">📄 ' + f.name + '</span>';
+        toast('✅ SRT 字幕已加载');
+    };
+    reader.readAsText(f);
+}
+
 $('videoUrl').onblur = function() {
     const u = this.value.trim();
     if (u && /^https?:\/\//.test(u)) showVideo(u);
