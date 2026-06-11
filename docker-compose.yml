@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  bilinote:
+    build: .
+    container_name: bilinote
+    ports:
+      - "3015:80"
+    volumes:
+      - ./www:/var/www/html
+      - ./uploads:/var/www/uploads
+    env_file:
+      - ./www/.env
+    restart: unless-stopped

@@ -1,0 +1,5 @@
+uploads/videos/*
+!uploads/videos/.gitkeep
+*.log
+.env
+www/.env

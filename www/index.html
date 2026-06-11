@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BiliNote - AI视频转录与笔记生成</title>
+<style>
+:root {
+    --bg: #f5f7fb;
+    --card: #fff;
+    --primary: #1a73e8;
+    --purple: #667eea;
+    --purple-dark: #764ba2;
+    --text: #1a1a1a;
+    --muted: #888;
+    --border: #e8eaed;
+    --radius: 12px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+
+/* 顶部导航 */
+.nav { background: linear-gradient(135deg, var(--primary), #0d47a1); padding: 0 24px; height: 52px; display: flex; align-items: center; gap: 12px; }
+.nav .logo { color: #fff; font-size: 18px; font-weight: 700; text-decoration: none; display: flex; align-items: center; gap: 8px; }
+.nav .logo i { font-size: 22px; }
+.nav .tag { background: rgba(255,255,255,.15); color: #fff; font-size: 11px; padding: 2px 10px; border-radius: 10px; }
+
+/* 页面 */
+.page { max-width: 1400px; margin: 0 auto; padding: 20px 24px; }
+.page-hd { margin-bottom: 20px; }
+.page-hd h2 { font-size: 22px; font-weight: 700; }
+.page-hd p { color: var(--muted); font-size: 13px; margin-top: 2px; }
+
+/* 双栏 */
+.grid { display: flex; gap: 20px; }
+.left { flex: 1 1 60%; min-width: 0; }
+.right { flex: 0 0 400px; width: 400px; }
+
+/* 卡片 */
+.card { background: var(--card); border-radius: var(--radius); box-shadow: 0 1px 4px rgba(0,0,0,.05); margin-bottom: 16px; overflow: hidden; }
+.card-hd { padding: 12px 18px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.card-hd i { color: var(--purple); }
+.card-bd { padding: 16px 18px; }
+
+/* 输入区 */
+.input-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.input-row .field { flex: 1; min-width: 200px; }
+.input-row label { font-size: 12px; font-weight: 600; color: var(--muted); display: block; margin-bottom: 4px; }
+.input-row input[type="url"],
+.input-row input[type="file"] { width: 100%; padding: 8px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 13px; outline: none; transition: border .15s; }
+.input-row input:focus { border-color: var(--purple); }
+.input-row .or { color: var(--muted); font-size: 12px; padding-bottom: 8px; }
+
+/* 按钮 */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: 8px; border: none; font-size: 13px; font-weight: 500; cursor: pointer; transition: all .15s; text-decoration: none; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-purple { background: linear-gradient(135deg, var(--purple), var(--purple-dark)); color: #fff; }
+.btn-purple:hover:not(:disabled) { opacity: .9; }
+.btn-outline { background: #fff; border: 1.5px solid #d0d0d0; color: #555; }
+.btn-outline:hover:not(:disabled) { border-color: var(--purple); color: var(--purple); }
+.btn-sm { padding: 5px 12px; font-size: 12px; border-radius: 6px; }
+
+/* 视频区 */
+.video-wrap { background: #0f0f1a; border-radius: 8px; min-height: 220px; display: flex; align-items: center; justify-content: center; color: #666; position: relative; overflow: hidden; }
+.video-wrap video { width: 100%; max-height: 400px; display: block; }
+.video-wrap .placeholder { text-align: center; position: absolute; }
+.video-wrap .placeholder i { font-size: 42px; display: block; margin-bottom: 8px; opacity: .4; }
+.video-wrap .placeholder span { font-size: 13px; opacity: .6; }
+
+/* 转录框 */
+.transcript-box { background: #fafbfc; border: 1px solid var(--border); border-radius: 8px; min-height: 140px; max-height: 380px; overflow-y: auto; padding: 12px 14px; font-size: 13px; line-height: 1.8; color: #444; white-space: pre-wrap; word-break: break-word; }
+.transcript-box:empty::after { content: '转录文本将在此显示...'; color: #bbb; }
+.transcript-box[contenteditable=true]:empty::after { content: '在此粘贴字幕文本，或通过上方输入框/上传视频自动获取...'; color: #bbb; }
+
+/* 来源标签 */
+.tag-sub { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+.tag-sub.green { background: #e6f7e6; color: #2e7d32; }
+.tag-sub.blue  { background: #e3f2fd; color: #1565c0; }
+.tag-sub.orange { background: #fff3e0; color: #e65100; }
+
+/* 风格按钮 */
+.style-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.style-btn { padding: 5px 14px; border: 1.5px solid #e0e0e0; border-radius: 18px; font-size: 12px; font-weight: 500; cursor: pointer; background: #fff; color: #555; transition: all .15s; user-select: none; white-space: nowrap; }
+.style-btn:hover { border-color: var(--purple); color: var(--purple); }
+.style-btn.active { background: linear-gradient(135deg, var(--purple), var(--purple-dark)); color: #fff; border-color: transparent; }
+
+/* 笔记内容 */
+.notes-area { min-height: 200px; max-height: 500px; overflow-y: auto; font-size: 14px; line-height: 1.85; color: #333; }
+.notes-area:empty::after { content: '选择笔记风格，点击「生成笔记」开始 AI 整理...'; color: #bbb; display: flex; align-items: center; justify-content: center; height: 160px; }
+.notes-area h2, .notes-area h3 { font-size: 1.05em; margin: 12px 0 4px; font-weight: 600; }
+.notes-area ul, .notes-area ol { padding-left: 20px; margin: 4px 0; }
+.notes-area p { margin: 4px 0; }
+.notes-area code { background: #f4f4f4; padding: 1px 4px; border-radius: 3px; font-size: .9em; }
+.notes-area pre { background: #f5f5f5; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: .9em; }
+
+/* Loading */
+.shimmer { animation: shimmer 1.5s infinite; background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; border-radius: 6px; min-height: 100px; }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* Toast */
+.toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 10px 24px; border-radius: 20px; font-size: 13px; z-index: 9999; opacity: 0; transition: opacity .3s; pointer-events: none; }
+.toast.on { opacity: 1; }
+
+/* 模型选择 */
+.model-select { padding: 6px 10px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 13px; outline: none; max-width: 230px; }
+
+/* notice */
+.notice { font-size: 12px; margin-top: 8px; }
+.notice.info { color: #1565c0; background: #e3f2fd; padding: 8px 12px; border-radius: 6px; border-left: 3px solid var(--purple); }
+
+/* 响应式 */
+@media (max-width: 900px) {
+    .grid { flex-direction: column; }
+    .right { flex: 1 1 auto; width: 100%; }
+    .input-row { flex-direction: column; }
+}
+/* 打印 */
+@media print {
+    body { background: #fff; }
+    .nav, .left, .style-row, .btn-toolbar, .page-hd, .card-hd, #inputCard { display: none !important; }
+    .grid { display: block; }
+    .right { width: 100%; }
+    .notes-area { max-height: none; overflow: visible; }
+    .card { box-shadow: none; border: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- 导航栏 -->
+<nav class="nav">
+    <a class="logo" href="/"><span style="font-size:22px">🎬</span> BiliNote</a>
+    <span class="tag">AI 视频笔记</span>
+</nav>
+
+<div class="page">
+
+    <div class="page-hd">
+        <h2>AI视频转录与笔记生成</h2>
+        <p>本地运行 · yt-dlp 自动抓取在线字幕 · DeepSeek 生成结构化笔记</p>
+    </div>
+
+    <div class="grid">
+
+        <!-- ======================== 左栏 ======================== -->
+        <div class="left">
+
+            <!-- 输入区 -->
+            <div class="card" id="inputCard">
+                <div class="card-hd">🎬 视频源</div>
+                <div class="card-bd">
+                    <div class="input-row">
+                        <div class="field">
+                            <label>视频URL（YouTube / B站）</label>
+                            <input type="url" id="videoUrl" placeholder="https://www.youtube.com/watch?v=... 或 B站链接">
+                        </div>
+                        <span class="or">或</span>
+                        <div class="field" style="flex:0 0 200px">
+                            <label>上传文件</label>
+                            <input type="file" id="videoFile" accept="video/mp4,video/avi,video/mkv,video/mov,video/webm,video/flv">
+                        </div>
+                        <button class="btn btn-purple" id="btnTranscribe" onclick="doTranscribe()" style="height:36px">
+                            ⚡ 开始转录
+                        </button>
+                    </div>
+                    <div id="noticeArea" class="notice info" style="display:none"></div>
+                </div>
+            </div>
+
+            <!-- 视频播放器 -->
+            <div class="card">
+                <div class="card-hd">▶️ 视频播放</div>
+                <div class="card-bd" style="padding:0">
+                    <div class="video-wrap" id="videoWrap">
+                        <div class="placeholder" id="videoPlaceholder">
+                            <i>🎥</i>
+                            <span>输入URL或上传视频后自动播放</span>
+                        </div>
+                        <video id="videoPlayer" controls style="display:none"></video>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 转录字幕 -->
+            <div class="card">
+                <div class="card-hd">
+                    📝 视频转录字幕
+                    <span id="sourceTag" style="margin-left:auto"></span>
+                </div>
+                <div class="card-bd" style="padding:0">
+                    <div class="transcript-box" id="transcriptBox" contenteditable="true"></div>
+                </div>
+                <div class="card-bd" style="padding-top:8px;text-align:right">
+                    <small style="color:var(--muted)">转录文本可编辑 · 编辑后点「重新生成」</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================== 右栏 ======================== -->
+        <div class="right">
+
+            <!-- 笔记风格 -->
+            <div class="card">
+                <div class="card-hd">🎨 笔记风格</div>
+                <div class="card-bd">
+                    <div class="style-row" id="styleRow">
+                        <span class="style-btn active" data-style="详细">详细</span>
+                        <span class="style-btn" data-style="精简">精简</span>
+                        <span class="style-btn" data-style="教程">教程</span>
+                        <span class="style-btn" data-style="学术">学术</span>
+                        <span class="style-btn" data-style="小红书">小红书</span>
+                        <span class="style-btn" data-style="生活向导">生活向导</span>
+                        <span class="style-btn" data-style="任务导向">任务导向</span>
+                        <span class="style-btn" data-style="商业风格">商业风格</span>
+                        <span class="style-btn" data-style="会议纪要">会议纪要</span>
+                    </div>
+                    <div style="margin-top:12px">
+                        <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">AI 模型</label>
+                        <select class="model-select" id="aiModel">
+                            <option value="deepseek-v4-flash">DeepSeek V4 Flash（快速）</option>
+                            <option value="deepseek-v4-pro">DeepSeek V4 Pro（深度）</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI 笔记 -->
+            <div class="card">
+                <div class="card-hd">
+                    ✨ AI 笔记
+                    <span id="notesSpinner" style="display:none;margin-left:6px">⏳</span>
+                </div>
+                <div class="card-bd">
+                    <div class="notes-area" id="notesArea"></div>
+                    <div class="shimmer" id="notesLoading" style="display:none"></div>
+                </div>
+                <div class="card-bd" style="padding-top:0;border-top:1px solid var(--border)">
+                    <div class="btn-toolbar" style="display:flex;flex-wrap:wrap;gap:8px">
+                        <button class="btn btn-purple btn-sm" id="btnGenerate" onclick="doGenerate()">🪄 生成笔记</button>
+                        <button class="btn btn-outline btn-sm" id="btnRegen" onclick="doGenerate()" disabled>🔄 重新生成</button>
+                        <button class="btn btn-outline btn-sm" id="btnCopy" onclick="copyNotes()" disabled>📋 复制</button>
+                        <button class="btn btn-outline btn-sm" id="btnPDF" onclick="downloadPDF()" disabled>🖨️ 打印PDF</button>
+                        <button class="btn btn-outline btn-sm" id="btnSave" onclick="saveNotes()" disabled>💾 保存</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ====================== State ======================
+let curTranscript = '';
+let curTimestamped = '';
+let curNotes = '';
+let busy = false;
+
+// ====================== Style selector ======================
+document.getElementById('styleRow').onclick = e => {
+    if (e.target.classList.contains('style-btn')) {
+        document.querySelectorAll('.style-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+    }
+};
+
+// ====================== Helpers ======================
+function $(id) { return document.getElementById(id); }
+function toast(msg, ms = 2500) {
+    const t = $('toast'); t.textContent = msg; t.classList.add('on');
+    setTimeout(() => t.classList.remove('on'), ms);
+}
+function setBtns(on) { ['btnRegen','btnCopy','btnPDF','btnSave'].forEach(id => $(id).disabled = !on); }
+function loading(id, v) {
+    const el = $(id);
+    if (v) { el.disabled = true; el._html = el.innerHTML; el.innerHTML = '⏳ 处理中...'; }
+    else { el.disabled = false; el.innerHTML = el._html || el.innerHTML; }
+}
+
+// ====================== Transcribe ======================
+async function doTranscribe() {
+    if (busy) return;
+    const url = $('videoUrl').value.trim();
+    const file = $('videoFile').files[0];
+    if (!url && !file) return toast('请提供视频URL或选择文件');
+
+    busy = true; loading('btnTranscribe', true);
+    $('noticeArea').style.display = 'none';
+    $('transcriptBox').textContent = '';
+    curTranscript = '';
+
+    const fd = new FormData();
+    fd.append('action', 'transcribe');
+    file ? fd.append('video_file', file) : fd.append('video_url', url);
+
+    try {
+        const r = await fetch('/api.php', { method: 'POST', body: fd });
+        const d = await r.json();
+
+        if (d.error) { toast('❌ ' + d.error); return; }
+
+        curTranscript = d.transcript || '';
+        curTimestamped = d.timestamped || '';
+        $('transcriptBox').textContent = curTimestamped || curTranscript;
+
+        // Source tag
+        const tag = $('sourceTag');
+        const labels = { manual_subtitle:'🗣️ 人工字幕', auto_subtitle:'🤖 自动字幕', embedded_subtitle:'📦 内嵌字幕', whisper:'🎙️ Whisper', url_only:'🔗 在线视频' };
+        const cls = d.source === 'whisper' ? 'blue' : (d.source === 'url_only' ? 'orange' : 'green');
+        tag.innerHTML = `<span class="tag-sub ${cls}">${labels[d.source] || d.source}</span>`;
+
+        // Notice
+        if (d.notice) { $('noticeArea').textContent = '💡 ' + d.notice; $('noticeArea').style.display = ''; }
+
+        // Video
+        if (d.video_path) showVideo('/' + d.video_path);
+        else if (d.video_url) showVideo(d.video_url);
+
+        // Auto-generate if transcript is available
+        if (curTranscript) {
+            toast('✅ 字幕获取成功，正在生成笔记...');
+            await doGenerate();
+        } else {
+            toast('⚠️ 未获取到字幕。请手动粘贴字幕文本，或上传视频文件使用 Whisper 转录。');
+        }
+    } catch (e) { toast('❌ 网络错误: ' + e.message); }
+    finally { busy = false; loading('btnTranscribe', false); }
+}
+
+// ====================== Video ======================
+function showVideo(src) {
+    const v = $('videoPlayer');
+    v.src = src; v.style.display = '';
+    $('videoPlaceholder').style.display = 'none';
+}
+$('videoFile').onchange = function() {
+    if (this.files[0]) { $('videoUrl').value = ''; showVideo(URL.createObjectURL(this.files[0])); }
+};
+$('videoUrl').oninput = function() {
+    if (this.value.trim()) $('videoFile').value = '';
+};
+$('videoUrl').onblur = function() {
+    const u = this.value.trim();
+    if (u && /^https?:\/\//.test(u)) showVideo(u);
+};
+
+// ====================== Generate Notes ======================
+function getTranscript() { return $('transcriptBox').textContent || curTranscript; }
+function getStyle() { const a = document.querySelector('.style-btn.active'); return a ? a.dataset.style : '详细'; }
+function getModel() { return $('aiModel').value; }
+
+async function doGenerate() {
+    const text = getTranscript();
+    if (!text.trim()) return toast('请先获取转录文本');
+
+    if (busy) return; busy = true;
+    const style = getStyle(); const model = getModel();
+    loading('btnGenerate', true);
+    $('notesSpinner').style.display = '';
+    $('notesArea').innerHTML = '';
+    $('notesLoading').style.display = '';
+
+    const fd = new FormData();
+    fd.append('action', 'generate');
+    fd.append('transcript', text);
+    fd.append('style', style);
+    fd.append('model', model);
+
+    try {
+        const r = await fetch('/api.php', { method: 'POST', body: fd });
+        const d = await r.json();
+        $('notesLoading').style.display = 'none';
+
+        if (d.error) {
+            $('notesArea').innerHTML = '<div style="color:#d32f2f">❌ ' + d.error + '</div>';
+            toast('❌ ' + d.error);
+        } else {
+            curNotes = d.notes || '';
+            renderMd(curNotes);
+            setBtns(true);
+            toast('✅ 笔记生成完成（' + style + ' · ' + (model === 'deepseek-v4-pro' ? 'Pro' : 'Flash') + '）');
+        }
+    } catch (e) {
+        $('notesLoading').style.display = 'none';
+        toast('❌ 网络错误: ' + e.message);
+    }
+    finally { busy = false; loading('btnGenerate', false); $('notesSpinner').style.display = 'none'; }
+}
+
+// ====================== Markdown rendering ======================
+function renderMd(md) {
+    if (!md) return;
+    let h = md.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    h = h.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+    h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+    h = h.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+    h = h.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    h = h.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+    h = h.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+    h = h.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    h = h.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    h = h.replace(/^[\-\*] (.+)$/gm, '<li>$1</li>');
+    h = h.replace(/\n\n/g, '</p><p>');
+    h = h.replace(/\n/g, '<br>');
+    h = '<p>' + h + '</p>';
+    h = h.replace(/<p>\s*<\/p>/g, '').replace(/<p><\/p>/g, '');
+    $('notesArea').innerHTML = h;
+}
+
+// ====================== Actions ======================
+function copyNotes() {
+    const t = $('notesArea').innerText;
+    if (!t.trim()) return toast('没有可复制的内容');
+    (navigator.clipboard ? navigator.clipboard.writeText(t) : fallbackCopy(t))
+        .then?.(() => toast('📋 已复制'))?.catch?.(() => fallbackCopy(t));
+}
+function fallbackCopy(t) {
+    const ta = document.createElement('textarea'); ta.value = t;
+    ta.style.cssText = 'position:fixed;left:-9999px'; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    toast('📋 已复制');
+}
+function downloadPDF() { if (curNotes) window.print(); else toast('没有可打印的内容'); }
+function saveNotes() {
+    if (!curNotes) return toast('没有可保存的内容');
+    const b = new Blob([$('notesArea').innerText], {type:'text/plain;charset=utf-8'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = 'BiliNote_' + getStyle() + '_' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '.txt';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(a.href); toast('💾 已保存');
+}
+</script>
+</body>
+</html>
