@@ -1,10 +1,11 @@
 FROM php:8.1-apache
 
-# ffmpeg + python3 (yt-dlp 依赖)
+# ffmpeg + python3 (yt-dlp 依赖) + oniguruma (mbstring 依赖)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     python3 \
     curl \
+    libonig-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # yt-dlp
