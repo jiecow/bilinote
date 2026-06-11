@@ -11,4 +11,6 @@ services:
       - ./uploads:/var/www/uploads
     env_file:
       - ./www/.env
+    command: >
+      bash -c "mkdir -p /var/www/uploads/videos && chmod 777 /var/www/uploads/videos && apache2-foreground"
     restart: unless-stopped

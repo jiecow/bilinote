@@ -256,18 +256,42 @@ function extractAudio($path) {
 // 处理文件上传
 // ============================================
 function handleUpload($file) {
-    if (empty($file['tmp_name']) || $file['error'] !== UPLOAD_ERR_OK) {
-        return ['error' => '文件上传失败'];
+    // 详细的上传错误
+    $uploadErrors = [
+        UPLOAD_ERR_INI_SIZE   => '文件超过 php.ini 限制',
+        UPLOAD_ERR_FORM_SIZE  => '文件超过表单限制',
+        UPLOAD_ERR_PARTIAL    => '文件只上传了一部分',
+        UPLOAD_ERR_NO_FILE    => '没有文件被上传',
+        UPLOAD_ERR_NO_TMP_DIR => '服务器缺少临时目录',
+        UPLOAD_ERR_CANT_WRITE => '无法写入磁盘',
+    ];
+    $errCode = $file['error'] ?? UPLOAD_ERR_NO_FILE;
+    if ($errCode !== UPLOAD_ERR_OK || empty($file['tmp_name'])) {
+        $msg = $uploadErrors[$errCode] ?? '上传错误码: ' . $errCode;
+        return ['error' => '文件上传失败: ' . $msg];
     }
+
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     if (!in_array($ext, ['mp4','avi','mkv','mov','webm','flv','wmv','m4v'])) {
         return ['error' => '不支持格式: ' . $ext];
     }
     if ($file['size'] > MAX_UPLOAD_SIZE) return ['error' => '文件超过500MB'];
 
-    if (!is_dir(UPLOAD_DIR)) mkdir(UPLOAD_DIR, 0777, true);
+    // 确保上传目录存在（递归创建）
+    if (!is_dir(UPLOAD_DIR)) {
+        if (!@mkdir(UPLOAD_DIR, 0777, true)) {
+            return ['error' => '无法创建上传目录: ' . UPLOAD_DIR . '，请检查权限'];
+        }
+    }
+    if (!is_writable(UPLOAD_DIR)) {
+        return ['error' => '上传目录不可写: ' . UPLOAD_DIR . '，请执行 chmod 777'];
+    }
+
     $dest = UPLOAD_DIR . time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $file['name']);
-    if (!move_uploaded_file($file['tmp_name'], $dest)) return ['error' => '保存失败'];
+    if (!@move_uploaded_file($file['tmp_name'], $dest)) {
+        $tmpExists = file_exists($file['tmp_name']);
+        return ['error' => '保存失败: ' . ($tmpExists ? '目标目录权限不足' : '临时文件丢失') . ' (' . UPLOAD_DIR . ')'];
+    }
 
     // 1. 提取字幕
     $subs = extractFileSubs($dest);
