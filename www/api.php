@@ -124,7 +124,7 @@ function findBin($names) {
 }
 
 // ============================================
-// yt-dlp 提取在线字幕
+// yt-dlp 提取在线字幕（多次尝试降级策略）
 // ============================================
 function fetchOnlineSubs($url) {
     $bin = findBin(['yt-dlp', '/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp']);
@@ -133,44 +133,59 @@ function fetchOnlineSubs($url) {
     $tmp = sys_get_temp_dir() . '/bilinote_' . uniqid();
     @mkdir($tmp, 0755, true);
 
-    // 探测字幕
-    exec(sprintf('%s --list-subs --no-playlist --skip-download %s 2>&1', escapeshellcmd($bin), escapeshellarg($url)), $out, $rc);
+    $srtFiles = [];
 
-    $manual = $auto = false;
-    foreach ($out as $l) {
-        if (stripos($l, 'zh') !== false || stripos($l, 'Chinese') !== false || stripos($l, '中文') !== false) {
-            stripos($l, 'automatic') !== false ? $auto = true : $manual = true;
+    // 策略1: 人工字幕 + 自动字幕，不限语言
+    $cmds = [
+        // 同时尝试人工+自动字幕，最常用语言
+        sprintf('%s --no-playlist --skip-download --write-subs --write-auto-subs --sub-langs "zh.*,en.*,ja.*,ko.*" --convert-subs srt -o %s %s 2>&1',
+            escapeshellcmd($bin), escapeshellarg($tmp . '/v'), escapeshellarg($url)),
+        // 回退：不限语言，所有可用字幕
+        sprintf('%s --no-playlist --skip-download --write-auto-subs --convert-subs srt -o %s %s 2>&1',
+            escapeshellcmd($bin), escapeshellarg($tmp . '/v2'), escapeshellarg($url)),
+    ];
+
+    foreach ($cmds as $cmd) {
+        exec($cmd, $o, $rc);
+        $srts = glob($tmp . '/*.srt') ?: [];
+        if ($srts) {
+            $srtFiles = $srts;
+            break;
         }
     }
 
-    $langs = $manual ? '"zh.*,zh-Hans,zh-Hant,en"' : '"zh.*,zh-Hans,zh-Hant,en"';
-    $flag  = $manual ? '--write-subs' : '--write-auto-subs';
-
-    exec(sprintf('%s --no-playlist --skip-download %s --sub-langs %s --convert-subs srt -o %s %s 2>&1',
-        escapeshellcmd($bin), $flag, $langs, escapeshellarg($tmp . '/v'), escapeshellarg($url)), $out2, $rc2);
-
-    $srts = glob($tmp . '/*.srt') ?: [];
-    if (!$srts) {
+    // 检查 VTT 格式
+    if (!$srtFiles) {
         $vtts = glob($tmp . '/*.vtt') ?: [];
-        if ($vtts) {
-            $cvt = $tmp . '/c.srt';
-            exec(sprintf('ffmpeg -y -i %s %s 2>/dev/null', escapeshellarg($vtts[0]), escapeshellarg($cvt)), $o3, $rc3);
-            if ($rc3 === 0 && file_exists($cvt)) $srts = [$cvt];
+        foreach ($vtts as $vtt) {
+            $cvt = $tmp . '/c_' . uniqid() . '.srt';
+            exec(sprintf('ffmpeg -y -i %s %s 2>/dev/null', escapeshellarg($vtt), escapeshellarg($cvt)), $o3, $rc3);
+            if ($rc3 === 0 && file_exists($cvt)) $srtFiles[] = $cvt;
         }
     }
 
-    if (!$srts) {
+    if (!$srtFiles) {
         array_map('unlink', glob($tmp . '/*') ?: []);
         @rmdir($tmp);
-        return ['found' => false, 'message' => '该视频无可用字幕，请上传视频文件使用 Whisper 转录'];
+        return ['found' => false, 'message' => '该视频无可抓取字幕，请尝试上传文件使用 Whisper 转录'];
     }
 
-    // 优先中文
-    $pick = null;
-    foreach ($srts as $f) {
-        if (preg_match('/zh|cn|chinese|中文/i', basename($f))) { $pick = $f; break; }
+    // 优先中文，其次英文
+    $pick = null; $source = 'auto_subtitle';
+    foreach ($srtFiles as $f) {
+        $bn = basename($f);
+        if (preg_match('/zh|cn|chinese|中文/i', $bn)) {
+            $pick = $f;
+            $source = stripos($bn, 'auto') !== false ? 'auto_subtitle' : 'manual_subtitle';
+            break;
+        }
     }
-    if (!$pick) $pick = $srts[0];
+    if (!$pick) {
+        foreach ($srtFiles as $f) {
+            if (preg_match('/en|english/i', basename($f))) { $pick = $f; break; }
+        }
+    }
+    if (!$pick) $pick = $srtFiles[0];
 
     $raw = file_get_contents($pick);
     array_map('unlink', glob($tmp . '/*') ?: []);
@@ -191,7 +206,7 @@ function fetchOnlineSubs($url) {
         'found'       => true,
         'text'        => implode("\n", $text),
         'timestamped' => implode("\n", $ts),
-        'source'      => $manual ? 'manual_subtitle' : 'auto_subtitle',
+        'source'      => $source,
     ];
 }
 
