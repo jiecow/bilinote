@@ -284,6 +284,42 @@ function handleUpload($file) {
 }
 
 // ============================================
+// yt-dlp 下载在线音频（字幕失败时的 Whisper 降级方案）
+// ============================================
+function fetchOnlineAudio($url) {
+    $bin = findBin(['yt-dlp', '/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp']);
+    if (!$bin) return null;
+
+    $tmp = sys_get_temp_dir() . '/bilinote_audio_' . uniqid();
+    @mkdir($tmp, 0755, true);
+
+    exec(sprintf('%s -x --audio-format mp3 --no-playlist --audio-quality 0 -o %s %s 2>&1',
+        escapeshellcmd($bin),
+        escapeshellarg($tmp . '/audio.%(ext)s'),
+        escapeshellarg($url)), $out, $rc);
+
+    $files = glob($tmp . '/*.mp3');
+    if (!$files) {
+        // 也检查其他音频格式
+        foreach (['m4a', 'opus', 'aac', 'wav'] as $ext) {
+            $files = glob($tmp . '/*.' . $ext);
+            if ($files) {
+                // 转 mp3
+                $mp3 = $tmp . '/audio.mp3';
+                exec(sprintf('ffmpeg -y -i %s -ar 16000 -ac 1 -b:a 64k %s 2>/dev/null',
+                    escapeshellarg($files[0]), escapeshellarg($mp3)), $o2, $rc2);
+                if ($rc2 === 0 && file_exists($mp3)) {
+                    @unlink($files[0]);
+                    $files = [$mp3];
+                }
+                break;
+            }
+        }
+    }
+    return $files ? $files[0] : null;
+}
+
+// ============================================
 // 路由
 // ============================================
 try {
@@ -304,11 +340,29 @@ try {
                 echo json_encode(['error' => 'URL 格式无效'], JSON_UNESCAPED_UNICODE);
                 exit;
             }
+            // 策略1: 抓取字幕
             $subs = fetchOnlineSubs($url);
             if ($subs['found']) {
                 $result = ['success' => true, 'source' => $subs['source'], 'transcript' => $subs['text'], 'timestamped' => $subs['timestamped'], 'video_url' => $url];
             } else {
-                $result = ['success' => true, 'source' => 'url_only', 'transcript' => '', 'timestamped' => '', 'video_url' => $url, 'notice' => $subs['message'] ?? '无法抓取字幕'];
+                // 策略2: 下载音频 → Whisper 转录
+                $audio = fetchOnlineAudio($url);
+                if ($audio) {
+                    $wr = callWhisper($audio);
+                    @unlink($audio);
+                    // 清理 yt-dlp 临时目录
+                    $tmpDir = dirname($audio);
+                    array_map('unlink', glob($tmpDir . '/*') ?: []);
+                    @rmdir($tmpDir);
+
+                    if (isset($wr['error'])) {
+                        $result = ['success' => true, 'source' => 'url_only', 'transcript' => '', 'timestamped' => '', 'video_url' => $url, 'notice' => '字幕抓取失败，Whisper 转录也失败: ' . $wr['error']];
+                    } else {
+                        $result = ['success' => true, 'source' => 'whisper_online', 'transcript' => $wr['text'], 'timestamped' => $wr['timestamped'], 'video_url' => $url];
+                    }
+                } else {
+                    $result = ['success' => true, 'source' => 'url_only', 'transcript' => '', 'timestamped' => '', 'video_url' => $url, 'notice' => $subs['message'] ?? '字幕和音频均获取失败'];
+                }
             }
         }
         echo json_encode($result, JSON_UNESCAPED_UNICODE);

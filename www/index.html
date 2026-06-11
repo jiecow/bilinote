@@ -306,8 +306,8 @@ async function doTranscribe() {
 
         // Source tag
         const tag = $('sourceTag');
-        const labels = { manual_subtitle:'🗣️ 人工字幕', auto_subtitle:'🤖 自动字幕', embedded_subtitle:'📦 内嵌字幕', whisper:'🎙️ Whisper', url_only:'🔗 在线视频' };
-        const cls = d.source === 'whisper' ? 'blue' : (d.source === 'url_only' ? 'orange' : 'green');
+        const labels = { manual_subtitle:'🗣️ 人工字幕', auto_subtitle:'🤖 自动字幕', embedded_subtitle:'📦 内嵌字幕', whisper:'🎙️ Whisper', whisper_online:'🎙️ Whisper(在线)', url_only:'🔗 在线视频' };
+        const cls = (d.source === 'whisper' || d.source === 'whisper_online') ? 'blue' : (d.source === 'url_only' ? 'orange' : 'green');
         tag.innerHTML = `<span class="tag-sub ${cls}">${labels[d.source] || d.source}</span>`;
 
         // Notice
